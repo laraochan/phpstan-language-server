@@ -8,10 +8,26 @@ use std::{
 };
 
 pub struct Analyzer {
-    root: PathBuf,
-    phpstan_path: Option<PathBuf>,
-    config_path: Option<PathBuf>,
-    memory_limit: Option<String>,
+    options: AnalyzerOptions,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnalyzerOptions {
+    pub workspace_root: PathBuf,
+    pub executable_path: Option<PathBuf>,
+    pub configuration_path: Option<PathBuf>,
+    pub memory_limit: Option<String>,
+}
+
+impl AnalyzerOptions {
+    pub fn new(workspace_root: PathBuf) -> Self {
+        Self {
+            workspace_root,
+            executable_path: None,
+            configuration_path: None,
+            memory_limit: None,
+        }
+    }
 }
 
 pub struct Analysis {
@@ -53,26 +69,12 @@ fn default_line_number() -> u64 {
 }
 
 impl Analyzer {
-    pub fn new(root: PathBuf) -> Self {
-        Self {
-            root,
-            phpstan_path: None,
-            config_path: None,
-            memory_limit: None,
-        }
+    pub fn new(options: AnalyzerOptions) -> Self {
+        Self { options }
     }
 
-    pub fn configure(
-        &mut self,
-        root: PathBuf,
-        phpstan_path: Option<PathBuf>,
-        config_path: Option<PathBuf>,
-        memory_limit: Option<String>,
-    ) {
-        self.root = root;
-        self.phpstan_path = phpstan_path;
-        self.config_path = config_path;
-        self.memory_limit = memory_limit;
+    pub fn configure(&mut self, options: AnalyzerOptions) {
+        self.options = options;
     }
 
     pub fn analyse(&self, file: &Path, source: &str) -> Result<Analysis, String> {
@@ -86,13 +88,13 @@ impl Analyzer {
         let binary = self.find_binary().ok_or_else(|| {
             format!(
                 "PHPStan was not found. Install phpstan/phpstan in this workspace or set initializationOptions.phpstanPath. Looked for {}.",
-                self.root.join("vendor/bin/phpstan").display()
+                self.options.workspace_root.join("vendor/bin/phpstan").display()
             )
         })?;
         let temporary = temporary.to_string_lossy();
         let file = file.to_string_lossy();
         let mut command = Command::new(binary);
-        command.current_dir(&self.root).args([
+        command.current_dir(&self.options.workspace_root).args([
             "analyse",
             "--error-format=json",
             "--no-progress",
@@ -106,7 +108,7 @@ impl Analyzer {
         if let Some(config) = self.configuration_path() {
             command.arg("--configuration").arg(config);
         }
-        if let Some(limit) = &self.memory_limit {
+        if let Some(limit) = &self.options.memory_limit {
             command.arg(format!("--memory-limit={limit}"));
         }
 
@@ -124,27 +126,27 @@ impl Analyzer {
     }
 
     fn find_binary(&self) -> Option<PathBuf> {
-        let configured = self.phpstan_path.as_ref().map(|path| {
+        let configured = self.options.executable_path.as_ref().map(|path| {
             if path.is_absolute() {
                 path.clone()
             } else {
-                self.root.join(path)
+                self.options.workspace_root.join(path)
             }
         });
         configured.filter(|path| path.is_file()).or_else(|| {
             ["vendor/bin/phpstan", "vendor/bin/phpstan.bat"]
                 .into_iter()
-                .map(|candidate| self.root.join(candidate))
+                .map(|candidate| self.options.workspace_root.join(candidate))
                 .find(|candidate| candidate.is_file())
         })
     }
 
     fn configuration_path(&self) -> Option<PathBuf> {
-        self.config_path.as_ref().map(|path| {
+        self.options.configuration_path.as_ref().map(|path| {
             if path.is_absolute() {
                 path.clone()
             } else {
-                self.root.join(path)
+                self.options.workspace_root.join(path)
             }
         })
     }
@@ -186,7 +188,7 @@ fn temporary_file(contents: &str) -> std::io::Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Analyzer, parse_output};
+    use super::{Analyzer, AnalyzerOptions, parse_output};
     use std::path::PathBuf;
 
     #[test]
@@ -213,13 +215,9 @@ mod tests {
 
     #[test]
     fn resolves_workspace_relative_configuration_file() {
-        let mut analyzer = Analyzer::new(PathBuf::from("/workspace"));
-        analyzer.configure(
-            PathBuf::from("/workspace"),
-            None,
-            Some(PathBuf::from("phpstan.neon.dist")),
-            None,
-        );
+        let mut options = AnalyzerOptions::new(PathBuf::from("/workspace"));
+        options.configuration_path = Some(PathBuf::from("phpstan.neon.dist"));
+        let analyzer = Analyzer::new(options);
 
         assert_eq!(
             analyzer.configuration_path(),

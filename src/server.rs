@@ -1,7 +1,8 @@
 use crate::{
-    phpstan::{Analysis, Analyzer, Issue},
+    phpstan::{Analysis, Analyzer, AnalyzerOptions, Issue},
     protocol::{read_message, write_message},
 };
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::Path;
 use std::{
@@ -17,6 +18,14 @@ pub struct Server {
     root: PathBuf,
     documents: HashMap<String, String>,
     analyzer: Analyzer,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InitializationOptions {
+    phpstan_path: Option<PathBuf>,
+    phpstan_config_path: Option<PathBuf>,
+    memory_limit: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -52,7 +61,7 @@ impl Server {
     pub fn new() -> io::Result<Self> {
         let root = env::current_dir()?;
         Ok(Self {
-            analyzer: Analyzer::new(root.clone()),
+            analyzer: Analyzer::new(AnalyzerOptions::new(root.clone())),
             root,
             documents: HashMap::new(),
         })
@@ -105,13 +114,14 @@ impl Server {
     fn configure(&mut self, message: &Value) {
         let params = &message["params"];
         self.root = workspace_root(params).unwrap_or_else(|| self.root.clone());
-        let options = &params["initializationOptions"];
-        self.analyzer.configure(
-            self.root.clone(),
-            options["phpstanPath"].as_str().map(PathBuf::from),
-            options["phpstanConfigPath"].as_str().map(PathBuf::from),
-            options["memoryLimit"].as_str().map(ToOwned::to_owned),
-        );
+        let options: InitializationOptions =
+            serde_json::from_value(params["initializationOptions"].clone()).unwrap_or_default();
+        self.analyzer.configure(AnalyzerOptions {
+            workspace_root: self.root.clone(),
+            executable_path: options.phpstan_path,
+            configuration_path: options.phpstan_config_path,
+            memory_limit: options.memory_limit,
+        });
     }
 
     fn publish_diagnostics(&self, uri: &str, output: &mut impl Write) -> io::Result<()> {
