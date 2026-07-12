@@ -192,9 +192,11 @@ fn publish_analysis(
         .map(|issue| diagnostic_from_issue(issue, source))
         .collect();
     if diagnostics.is_empty() && !analysis.errors.is_empty() {
+        let (start_character, end_character) = line_character_range(source, 0);
         diagnostics.push(diagnostic(
             0,
-            line_end_character(source, 0),
+            start_character,
+            end_character,
             analysis.errors.join("\n"),
             None,
         ));
@@ -211,27 +213,39 @@ fn same_file(document: &Path, reported: &Path) -> bool {
 }
 
 fn diagnostic_from_issue(issue: Issue, source: &str) -> Value {
+    let line = issue.line.saturating_sub(1);
+    let (start_character, end_character) = line_character_range(source, line);
     diagnostic(
-        issue.line.saturating_sub(1),
-        line_end_character(source, issue.line.saturating_sub(1)),
+        line,
+        start_character,
+        end_character,
         issue.message,
         issue.identifier,
     )
 }
 
-fn line_end_character(source: &str, line: u64) -> u64 {
-    source
+fn line_character_range(source: &str, line: u64) -> (u64, u64) {
+    let line = source
         .split('\n')
         .nth(line as usize)
         .unwrap_or_default()
-        .trim_end_matches('\r')
-        .encode_utf16()
-        .count() as u64
+        .trim_end_matches('\r');
+    let leading_whitespace = &line[..line.len() - line.trim_start().len()];
+    let content = line.trim();
+    let start_character = leading_whitespace.encode_utf16().count() as u64;
+    let end_character = start_character + content.encode_utf16().count() as u64;
+    (start_character, end_character)
 }
 
-fn diagnostic(line: u64, end_character: u64, message: String, code: Option<String>) -> Value {
+fn diagnostic(
+    line: u64,
+    start_character: u64,
+    end_character: u64,
+    message: String,
+    code: Option<String>,
+) -> Value {
     json!({
-        "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": end_character}},
+        "range": {"start": {"line": line, "character": start_character}, "end": {"line": line, "character": end_character}},
         "severity": 1,
         "source": "phpstan",
         "code": code,
@@ -261,13 +275,13 @@ fn publish_error(output: &mut impl Write, uri: &str, message: &str) -> io::Resul
     publish(
         output,
         uri,
-        vec![diagnostic(0, 1, message.to_owned(), None)],
+        vec![diagnostic(0, 0, 1, message.to_owned(), None)],
     )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Method, line_end_character, update_document, workspace_root};
+    use super::{Method, line_character_range, update_document, workspace_root};
     use serde_json::json;
     use std::{collections::HashMap, path::PathBuf};
 
@@ -302,7 +316,10 @@ mod tests {
     }
 
     #[test]
-    fn calculates_the_full_line_range_in_utf16_code_units() {
-        assert_eq!(line_end_character("<?php\n$value = 😀;\r\n", 1), 12);
+    fn calculates_the_non_whitespace_line_range_in_utf16_code_units() {
+        assert_eq!(
+            line_character_range("<?php\n  $value = 😀;  \r\n", 1),
+            (2, 14)
+        );
     }
 }
