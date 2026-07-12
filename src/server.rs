@@ -125,7 +125,7 @@ impl Server {
             .unwrap_or_else(|| fs::read_to_string(&file).unwrap_or_default());
 
         match self.analyzer.analyse(&file, &source) {
-            Ok(analysis) => publish_analysis(output, uri, analysis),
+            Ok(analysis) => publish_analysis(output, uri, &source, analysis),
             Err(error) => publish_error(output, uri, &error),
         }
     }
@@ -175,7 +175,12 @@ fn path_from_uri(uri: &str) -> Option<PathBuf> {
     Url::parse(uri).ok()?.to_file_path().ok()
 }
 
-fn publish_analysis(output: &mut impl Write, uri: &str, analysis: Analysis) -> io::Result<()> {
+fn publish_analysis(
+    output: &mut impl Write,
+    uri: &str,
+    source: &str,
+    analysis: Analysis,
+) -> io::Result<()> {
     let file = path_from_uri(uri);
     let mut diagnostics: Vec<_> = analysis
         .issues
@@ -184,10 +189,15 @@ fn publish_analysis(output: &mut impl Write, uri: &str, analysis: Analysis) -> i
             file.as_deref()
                 .is_some_and(|file| same_file(file, &issue.file))
         })
-        .map(diagnostic_from_issue)
+        .map(|issue| diagnostic_from_issue(issue, source))
         .collect();
     if diagnostics.is_empty() && !analysis.errors.is_empty() {
-        diagnostics.push(diagnostic(0, analysis.errors.join("\n"), None));
+        diagnostics.push(diagnostic(
+            0,
+            line_end_character(source, 0),
+            analysis.errors.join("\n"),
+            None,
+        ));
     }
     publish(output, uri, diagnostics)
 }
@@ -200,17 +210,28 @@ fn same_file(document: &Path, reported: &Path) -> bool {
         )
 }
 
-fn diagnostic_from_issue(issue: Issue) -> Value {
+fn diagnostic_from_issue(issue: Issue, source: &str) -> Value {
     diagnostic(
         issue.line.saturating_sub(1),
+        line_end_character(source, issue.line.saturating_sub(1)),
         issue.message,
         issue.identifier,
     )
 }
 
-fn diagnostic(line: u64, message: String, code: Option<String>) -> Value {
+fn line_end_character(source: &str, line: u64) -> u64 {
+    source
+        .split('\n')
+        .nth(line as usize)
+        .unwrap_or_default()
+        .trim_end_matches('\r')
+        .encode_utf16()
+        .count() as u64
+}
+
+fn diagnostic(line: u64, end_character: u64, message: String, code: Option<String>) -> Value {
     json!({
-        "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": 1}},
+        "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": end_character}},
         "severity": 1,
         "source": "phpstan",
         "code": code,
@@ -237,12 +258,16 @@ fn publish(output: &mut impl Write, uri: &str, diagnostics: Vec<Value>) -> io::R
 }
 
 fn publish_error(output: &mut impl Write, uri: &str, message: &str) -> io::Result<()> {
-    publish(output, uri, vec![diagnostic(0, message.to_owned(), None)])
+    publish(
+        output,
+        uri,
+        vec![diagnostic(0, 1, message.to_owned(), None)],
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Method, update_document, workspace_root};
+    use super::{Method, line_end_character, update_document, workspace_root};
     use serde_json::json;
     use std::{collections::HashMap, path::PathBuf};
 
@@ -274,5 +299,10 @@ mod tests {
         assert_eq!(Method::from(Some("textDocument/didSave")), Method::DidSave);
         assert_eq!(Method::from(Some("workspace/symbol")), Method::Unknown);
         assert_eq!(Method::from(None), Method::Unknown);
+    }
+
+    #[test]
+    fn calculates_the_full_line_range_in_utf16_code_units() {
+        assert_eq!(line_end_character("<?php\n$value = 😀;\r\n", 1), 12);
     }
 }
