@@ -144,7 +144,7 @@ impl Server {
 fn initialize_result() -> Value {
     json!({
         "capabilities": {"textDocumentSync": {"openClose": true, "change": 1}},
-        "serverInfo": {"name": "phpstan-language-server", "version": env!("CARGO_PKG_VERSION")},
+        "serverInfo": {"name": "phpstan-diagnostics-lsp", "version": env!("CARGO_PKG_VERSION")},
     })
 }
 

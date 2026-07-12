@@ -1,4 +1,4 @@
-# phpstan-language-server
+# phpstan-diagnostics-lsp
 
 > [!WARNING]
 > This is an experimental prototype, built primarily for personal use. Its
@@ -35,7 +35,7 @@ cargo install --path .
 ```
 
 The server uses standard input/output for LSP. Configure your editor to start
-`phpstan-language-server` with the workspace as its working directory. It
+`phpstan-diagnostics-lsp` with the workspace as its working directory. It
 discovers `vendor/bin/phpstan`; clients can instead set
 `initializationOptions.phpstanPath` to an absolute path or a workspace-relative
 path.

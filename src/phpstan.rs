@@ -174,7 +174,7 @@ fn parse_output(stdout: &[u8]) -> Result<Analysis, serde_json::Error> {
 
 fn temporary_file(contents: &str) -> std::io::Result<PathBuf> {
     let name = format!(
-        "phpstan-language-server-{}-{}.php",
+        "phpstan-diagnostics-lsp-{}-{}.php",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
