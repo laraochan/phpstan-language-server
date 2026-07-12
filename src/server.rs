@@ -291,7 +291,9 @@ fn publish_error(output: &mut impl Write, uri: &str, message: &str) -> io::Resul
 
 #[cfg(test)]
 mod tests {
-    use super::{Method, line_character_range, update_document, workspace_root};
+    use super::{
+        InitializationOptions, Method, line_character_range, update_document, workspace_root,
+    };
     use serde_json::json;
     use std::{collections::HashMap, path::PathBuf};
 
@@ -323,6 +325,26 @@ mod tests {
         assert_eq!(Method::from(Some("textDocument/didSave")), Method::DidSave);
         assert_eq!(Method::from(Some("workspace/symbol")), Method::Unknown);
         assert_eq!(Method::from(None), Method::Unknown);
+    }
+
+    #[test]
+    fn deserializes_phpstan_initialization_options() {
+        let options: InitializationOptions = serde_json::from_value(json!({
+            "phpstanPath": "dev-script/phpstan",
+            "phpstanConfigPath": "phpstan.neon.dist",
+            "memoryLimit": "1G",
+        }))
+        .unwrap();
+
+        assert_eq!(
+            options.phpstan_path,
+            Some(PathBuf::from("dev-script/phpstan"))
+        );
+        assert_eq!(
+            options.phpstan_config_path,
+            Some(PathBuf::from("phpstan.neon.dist"))
+        );
+        assert_eq!(options.memory_limit.as_deref(), Some("1G"));
     }
 
     #[test]
