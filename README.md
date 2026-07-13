@@ -40,19 +40,37 @@ discovers `vendor/bin/phpstan`; clients can instead set
 `initializationOptions.phpstanPath` to an absolute path or a workspace-relative
 path.
 
-## Configuration
+## Usage
 
-The exact configuration syntax is editor-specific. This server accepts the
-following optional LSP initialization options:
+```sh
+phpstan-diagnostics-lsp [OPTIONS]
+```
 
-- `phpstanPath` chooses the PHPStan executable. By default, the server uses
-  `vendor/bin/phpstan` in the workspace.
-- `phpstanConfigPath` chooses the PHPStan configuration file. It accepts an
-  absolute path or a path relative to the workspace, and is passed to PHPStan
-  as `--configuration`.
-- `memoryLimit` passes a PHP memory limit such as `1G` to PHPStan.
+For example, configure the PHPStan executable and configuration file when the
+server is started:
 
-`phpstanConfigPath` supports `phpstan.neon`, `phpstan.neon.dist`,
+```sh
+phpstan-diagnostics-lsp \
+  --phpstan-path dev-script/phpstan \
+  --configuration phpstan.neon.dist \
+  --memory-limit 1G
+```
+
+Available options:
+
+- `--phpstan-path <PATH>` chooses the PHPStan executable. By default, the
+  server uses `vendor/bin/phpstan` in the workspace.
+- `-c`, `--configuration <PATH>` chooses the PHPStan configuration file. It
+  accepts an absolute path or a path relative to the workspace.
+- `--memory-limit <LIMIT>` passes a PHP memory limit such as `1G` to PHPStan.
+- `-h`, `--help` prints the available options.
+
+This is a stdio language server and is normally started by an editor LSP
+configuration. The same settings can be passed as LSP initialization options
+(`phpstanPath`, `phpstanConfigPath`, and `memoryLimit`), but explicit CLI
+options take precedence.
+
+`--configuration` supports `phpstan.neon`, `phpstan.neon.dist`,
 `phpstan.dist`, and other configuration file names.
 
 On `didOpen`, `didChange`, and `didSave`, the current buffer is written to a

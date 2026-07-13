@@ -1,4 +1,5 @@
 use crate::{
+    cli::CommandLineOptions,
     phpstan::{Analysis, Analyzer, AnalyzerOptions, Issue},
     protocol::{read_message, write_message},
 };
@@ -18,6 +19,7 @@ pub struct Server {
     root: PathBuf,
     documents: HashMap<String, String>,
     analyzer: Analyzer,
+    command_line_options: CommandLineOptions,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -58,12 +60,13 @@ impl From<Option<&str>> for Method {
 }
 
 impl Server {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(command_line_options: CommandLineOptions) -> io::Result<Self> {
         let root = env::current_dir()?;
         Ok(Self {
             analyzer: Analyzer::new(AnalyzerOptions::new(root.clone())),
             root,
             documents: HashMap::new(),
+            command_line_options,
         })
     }
 
@@ -118,9 +121,21 @@ impl Server {
             serde_json::from_value(params["initializationOptions"].clone()).unwrap_or_default();
         self.analyzer.configure(AnalyzerOptions {
             workspace_root: self.root.clone(),
-            executable_path: options.phpstan_path,
-            configuration_path: options.phpstan_config_path,
-            memory_limit: options.memory_limit,
+            executable_path: self
+                .command_line_options
+                .phpstan_path
+                .clone()
+                .or(options.phpstan_path),
+            configuration_path: self
+                .command_line_options
+                .configuration_path
+                .clone()
+                .or(options.phpstan_config_path),
+            memory_limit: self
+                .command_line_options
+                .memory_limit
+                .clone()
+                .or(options.memory_limit),
         });
     }
 
